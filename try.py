@@ -39,8 +39,7 @@ result_final_model = model.train(
     project='yolo_buck_patched_benchmarks',
     save=True,
     imgsz = 1280,
-    warmup_epochs = 5,
-    verbose = True
+    warmup_epochs = 5
 )
 
 # Define model and dataset names

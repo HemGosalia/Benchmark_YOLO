@@ -9,29 +9,29 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 # Initialize a new W&B run
 wandb.init(project="yolo_buck_patched_benchmarks")
+
 # Load the custom model configuration
-model = YOLO('yolov9t.yaml')
+model = YOLO('yolov10n.yaml')
 model.model.to(device)
 
 # Define a callback to log losses at the end of each training batch
 def log_losses(trainer):
     # Access the loss dictionary
-    loss_items = trainer.loss_items
-    
-    # Log each loss component
-    wandb.log({
-        "train/box_loss": loss_items[0],
-        "train/cls_loss": loss_items[1],
-        "train/dfl_loss": loss_items[2]
-    }, step=trainer.epoch)
-
-    torch.cuda.empty_cache()
+    if hasattr(trainer, 'loss_items') and trainer.loss_items is not None:
+        loss_items = trainer.loss_items
+        if len(loss_items) >= 3:
+            wandb.log({
+                "train/box_loss": loss_items[0],
+                "train/cls_loss": loss_items[1],
+                "train/dfl_loss": loss_items[2]
+            }, step=trainer.epoch)
+        torch.cuda.empty_cache()
 
 # Register the callback with the YOLO model
 model.add_callback('on_train_batch_end', log_losses)
 
 # Train the model with the specified configuration and sync to W&B
-Result_Final_model = model.train(
+result_final_model = model.train(
     data="/kaggle/input/bucktales-patched/dtc2023.yaml",
     epochs=70,
     batch=8,
@@ -39,10 +39,12 @@ Result_Final_model = model.train(
     project='yolo_buck_patched_benchmarks',
     save=True,
     imgsz = 1280,
-    warmup_epochs = 5
+    warmup_epochs = 5,
+    verbose = True
 )
+
 # Define model and dataset names
-model_name = "yolov9t_vanilla"
+model_name = "yolov10n_vanilla"
 dataset_name = "bucktales-patched"
 
 # Save the model as .pth file in Kaggle workspace

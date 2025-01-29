@@ -14,21 +14,40 @@ wandb.init(project="yolo_buck_patched_benchmarks")
 model = YOLO('yolov9t.yaml')
 model.model.to(device)
 
-# Define a callback to log losses at the end of each training batch
-def log_losses(trainer):
-    # Access the loss dictionary
+# Define a callback to log losses and additional metrics at the end of each training batch
+def log_metrics(trainer):
     if hasattr(trainer, 'loss_items') and trainer.loss_items is not None:
         loss_items = trainer.loss_items
         if len(loss_items) >= 3:
-            wandb.log({
+            wandb_log_data = {
                 "train/box_loss": loss_items[0],
                 "train/cls_loss": loss_items[1],
-                "train/dfl_loss": loss_items[2]
-            }, step=trainer.epoch)
+                "train/dfl_loss": loss_items[2],
+                "epoch": getattr(trainer, "epoch", 0),
+                "learning_rate": trainer.optimizer.param_groups[0]['lr'],
+                "gpu_mem": torch.cuda.memory_reserved(device) / 1e9,  # More accurate GPU memory logging
+                "GFLOPs": getattr(trainer.model, "flops", 0),  # Avoid attribute error
+                "parameters": sum(p.numel() for p in trainer.model.parameters())
+            }
+            
+            # Ensure trainer.metrics exists and is a dictionary before accessing its values
+            if hasattr(trainer, "metrics") and isinstance(trainer.metrics, dict):
+                wandb_log_data.update({
+                    "metrics/precision": trainer.metrics.get("precision", 0),
+                    "metrics/recall": trainer.metrics.get("recall", 0),
+                    "metrics/mAP_50": trainer.metrics.get("mAP_50", 0),
+                    "metrics/mAP_50-95": trainer.metrics.get("mAP_50-95", 0),
+                    "val/box_loss": trainer.metrics.get("val/box_loss", 0),
+                    "val/cls_loss": trainer.metrics.get("val/cls_loss", 0),
+                    "val/dfl_loss": trainer.metrics.get("val/dfl_loss", 0),
+                })
+
+            wandb.log(wandb_log_data, step=wandb_log_data["epoch"])
+
         torch.cuda.empty_cache()
 
 # Register the callback with the YOLO model
-model.add_callback('on_train_batch_end', log_losses)
+model.add_callback('on_train_batch_end', log_metrics)
 
 # Train the model with the specified configuration and sync to W&B
 result_final_model = model.train(
@@ -38,8 +57,9 @@ result_final_model = model.train(
     optimizer='auto',
     project='yolo_buck_patched_benchmarks',
     save=True,
-    imgsz = 1280,
-    warmup_epochs = 5
+    imgsz=1280,
+    warmup_epochs=5,
+    verbose=True
 )
 
 # Define model and dataset names
